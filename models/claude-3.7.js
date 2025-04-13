@@ -8,7 +8,7 @@
 const Claude37Model = {
     name: "Claude 3.7 Sonnet",
     provider: "Anthropic",
-    description: "An advanced model with improved performance for complex reasoning tasks, agentic coding, and detailed content generation.",
+    description: "Claude 3.7 Sonnet is the latest model from Anthropic with enhanced reasoning abilities.",
     maxTokens: 200000,
     defaultParams: {
         temperature: 0.7,
@@ -16,22 +16,79 @@ const Claude37Model = {
     },
     
     /**
+     * Format messages for the Claude API
+     * @param {string|object|array} message - Input message in various formats
+     * @returns {array} - Properly formatted messages array
+     */
+    formatMessages(message) {
+        // If already an array of messages, return as is
+        if (Array.isArray(message)) {
+            return message;
+        }
+        
+        // If it's an object with role/content, wrap in array
+        if (message && typeof message === 'object' && message.role && message.content) {
+            return [message];
+        }
+        
+        // If it's a string, create a user message
+        if (typeof message === 'string') {
+            return [{
+                role: 'user',
+                content: message
+            }];
+        }
+        
+        // Default fallback
+        console.warn('Unknown message format for Claude:', message);
+        return [{
+            role: 'user',
+            content: String(message) || 'Hello'
+        }];
+    },
+    
+    /**
      * Sends a message to the Claude 3.7 Sonnet model
-     * @param {string} message - The user message to send to the model
+     * @param {string|object|array} message - The user message to send to the model
      * @param {Object} options - Additional options for the request
      * @returns {Promise<object>} - The model's response
      */
     async sendMessage(message, options = {}) {
         try {
+            const formattedMessages = this.formatMessages(message);
+            
             const modelOptions = {
+                ...this.defaultParams,
                 ...options,
                 model: 'claude-3-7-sonnet'
             };
             
-            const response = await puter.ai.chat(message, modelOptions);
+            console.log("Sending Claude 3.7 request with options:", modelOptions);
+            console.log("Messages:", formattedMessages);
             
-            // Handle response format based on the documentation
-            return response.message?.content?.[0]?.text || response;
+            const response = await puter.ai.chat({
+                messages: formattedMessages,
+                ...modelOptions
+            });
+            
+            console.log("Claude 3.7 response:", response);
+            
+            // If we got an error response, format it properly
+            if (response && response.error) {
+                throw new Error(response.error.message || "Error from Claude 3.7 API");
+            }
+            
+            // Handle different response formats
+            if (response.message?.content?.[0]?.text) {
+                return response.message.content[0].text;
+            } else if (response.content) {
+                return response.content;
+            } else if (typeof response === 'string') {
+                return response;
+            } else {
+                console.warn("Unexpected Claude 3.7 response format:", response);
+                return String(response);
+            }
         } catch (error) {
             console.error("Error sending message to Claude 3.7 Sonnet:", error);
             throw error;
@@ -40,29 +97,59 @@ const Claude37Model = {
     
     /**
      * Streams a response from the Claude 3.7 Sonnet model
-     * @param {string} message - The user message to send to the model
+     * @param {string|object|array} message - The user message to send to the model
      * @param {function} onChunk - Callback function for each chunk of the response
      * @param {Object} options - Additional options for the request
      * @returns {Promise<void>}
      */
     async streamMessage(message, onChunk, options = {}) {
         try {
+            const formattedMessages = this.formatMessages(message);
+            
             // Set streaming and model options
             const streamOptions = {
+                ...this.defaultParams,
                 ...options,
                 model: 'claude-3-7-sonnet',
                 stream: true
             };
             
+            console.log("Streaming Claude 3.7 request with options:", streamOptions);
+            console.log("Messages:", formattedMessages);
+            
             // Get streaming response
-            const response = await puter.ai.chat(message, streamOptions);
+            const response = await puter.ai.chat({
+                messages: formattedMessages,
+                ...streamOptions
+            });
+            
+            let fullResponse = '';
             
             // Process each chunk
             for await (const part of response) {
-                if (onChunk && typeof onChunk === 'function') {
-                    onChunk(part?.text || '');
+                console.log("Claude 3.7 streaming part:", part);
+                
+                // Extract text from various possible formats
+                let chunkText = '';
+                if (part?.text) {
+                    chunkText = part.text;
+                } else if (part?.message?.content?.[0]?.text) {
+                    chunkText = part.message.content[0].text;
+                } else if (part?.content) {
+                    chunkText = part.content;
+                } else if (typeof part === 'string') {
+                    chunkText = part;
+                }
+                
+                if (chunkText) {
+                    fullResponse += chunkText;
+                    if (onChunk && typeof onChunk === 'function') {
+                        onChunk(chunkText, fullResponse);
+                    }
                 }
             }
+            
+            return fullResponse;
         } catch (error) {
             console.error("Error streaming message from Claude 3.7 Sonnet:", error);
             throw error;

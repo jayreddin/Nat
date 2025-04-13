@@ -32,9 +32,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Current active model
     let activeModel = 'gpt-4o-mini';
     let chatActive = false;
+    let streamingEnabled = false;
     
     // Track dropdown state
     let dropdownVisible = false;
+    
+    // Get streaming toggle button reference
+    const streamingToggleBtn = document.getElementById('stream-toggle-btn');
     
     // Check for mobile view
     const isMobile = () => window.innerWidth <= 480;
@@ -89,15 +93,24 @@ document.addEventListener('DOMContentLoaded', () => {
         environmentDisplay.textContent = puter.env || 'web';
     }
     
-    // Check if user is already signed in
+    // Add caching for auth status
+    let authStatusCache = {
+        isSignedIn: null,
+        user: null,
+        lastChecked: 0
+    };
+    
+    // Check if user is already signed in - only check once during initialization
     checkAuthStatus();
     
     // Add Puter auth functionality to sign-in button
     if (signInBtn) {
         signInBtn.addEventListener('click', async () => {
-            if (!puter.auth.isSignedIn()) {
+            if (!await isUserSignedIn()) {
                 try {
                     await puter.auth.signIn();
+                    // Clear cache to force fresh check
+                    authStatusCache.lastChecked = 0;
                     checkAuthStatus();
                 } catch (error) {
                     console.error('Authentication failed:', error);
@@ -156,8 +169,127 @@ document.addEventListener('DOMContentLoaded', () => {
             closeModelSelector();
             
             console.log(`Selected model: ${modelName} (${modelProvider})`);
+            
+            // Check if model supports streaming and show/hide the streaming toggle
+            if (supportsStreaming(modelName)) {
+                streamingToggleBtn.style.display = 'flex';
+            } else {
+                streamingToggleBtn.style.display = 'none';
+                // Disable streaming if model doesn't support it
+                streamingEnabled = false;
+                updateStreamingButtonState();
+            }
+            
+            // Load model-specific module
+            loadModelModule(modelName);
         });
     });
+    
+    // Function to check if a model supports streaming
+    function supportsStreaming(modelName) {
+        // List of models that support streaming
+        const streamingModels = [
+            'gpt-4o', 'gpt-4o-mini', 'o1-mini', 'o3-mini',
+            'claude-3-5-sonnet', 'claude-3-7-sonnet',
+            'gemini-2.0-flash', 'gemini-pro', 'gemini-pro-1.5',
+            'gemini-2.5-pro-exp-03-25:free', 'gemini-2.0-flash-thinking-exp:free',
+            'meta-llama/llama-4-maverick', 'meta-llama/llama-4-scout',
+            'mistral-large-latest', 'pixtral-large-latest', 'codestral-latest',
+            'x-ai/grok-3-beta', 'grok-beta'
+        ];
+        
+        return streamingModels.includes(modelName);
+    }
+    
+    // Function to load model-specific modules
+    async function loadModelModule(modelName) {
+        try {
+            // Map model names to their respective module files
+            let moduleName = '';
+            
+            if (modelName.includes('gpt-4o') || modelName.includes('gpt-')) {
+                moduleName = 'openai';
+            } else if (modelName.includes('o1-mini')) {
+                moduleName = 'o1-mini';
+            } else if (modelName.includes('o3-mini')) {
+                moduleName = 'o3-mini';
+            } else if (modelName.includes('claude-3-5')) {
+                moduleName = 'claude-3.5';
+            } else if (modelName.includes('claude-3-7')) {
+                moduleName = 'claude-3.7';
+            } else if (modelName.includes('gemini')) {
+                moduleName = 'gemini';
+            } else if (modelName.includes('llama')) {
+                moduleName = 'llama';
+            } else if (modelName.includes('grok')) {
+                moduleName = 'grok';
+            } else if (modelName.includes('mistral-large')) {
+                moduleName = 'mistral-large';
+            } else if (modelName.includes('codestral')) {
+                moduleName = 'codestral';
+            } else if (modelName.includes('deepseek')) {
+                moduleName = 'deepseek';
+            }
+            
+            if (moduleName) {
+                // Only load module if not already loaded
+                if (!window.loadedModules) {
+                    window.loadedModules = {};
+                }
+                
+                if (!window.loadedModules[moduleName]) {
+                    console.log(`Loading module for ${modelName}: ${moduleName}`);
+                    try {
+                        // Use a proper dynamic import that caches the result
+                        const moduleUrl = `./models/${moduleName}.js`;
+                        
+                        // Add a cache breaker if developing, but use timestamp to avoid frequent reloads
+                        // This will only reload modules once per hour at most
+                        const hourTimestamp = Math.floor(Date.now() / 3600000);
+                        const url = `${moduleUrl}?v=${hourTimestamp}`;
+                        
+                        const module = await import(url);
+                        window.loadedModules[moduleName] = module.default;
+                        console.log(`Successfully loaded module: ${moduleName}`);
+                    } catch (error) {
+                        console.error(`Failed to load module ${moduleName}.js:`, error);
+                        // Don't retry immediately to avoid excessive API calls
+                        // Set a placeholder to prevent repeated attempts in a session
+                        window.loadedModules[moduleName] = { loadFailed: true };
+                    }
+                } else if (window.loadedModules[moduleName].loadFailed) {
+                    console.log(`Previously failed to load module: ${moduleName}, not retrying`);
+                } else {
+                    console.log(`Using cached module: ${moduleName}`);
+                }
+            }
+        } catch (error) {
+            console.error(`Error in loadModelModule for ${modelName}:`, error);
+        }
+    }
+    
+    // Initialize streaming toggle button
+    streamingToggleBtn.addEventListener('click', toggleStreaming);
+    
+    function toggleStreaming() {
+        streamingEnabled = !streamingEnabled;
+        updateStreamingButtonState();
+    }
+    
+    function updateStreamingButtonState() {
+        if (streamingEnabled) {
+            streamingToggleBtn.classList.add('active');
+        } else {
+            streamingToggleBtn.classList.remove('active');
+        }
+    }
+    
+    // Check initial model for streaming support
+    if (supportsStreaming(activeModel)) {
+        streamingToggleBtn.style.display = 'flex';
+    } else {
+        streamingToggleBtn.style.display = 'none';
+    }
     
     // Function to close model selector
     function closeModelSelector() {
@@ -271,106 +403,320 @@ document.addEventListener('DOMContentLoaded', () => {
         const message = messageInput.value.trim();
         if (!message) return;
         
-        // Show chat and hide model cards if not already shown
-        if (!chatActive) {
-            showChat();
+        // Don't send multiple requests while one is in progress
+        if (window.isAiMessageInProgress) {
+            console.log("Message already in progress, ignoring this request");
+            return;
         }
         
-        // Add user message to UI
-        addUserMessage(message);
-        
-        // Clear input
-        messageInput.value = '';
-        
-        // Add loading indicator
-        const loadingMessageId = addLoadingMessage();
-        
-        // Create messages array for history if it doesn't exist yet
-        let currentMessages = [];
-        
-        // Add user message to history
-        currentMessages.push({
-            sender: 'user',
-            content: message,
-            time: getFormattedTime(),
-            timestamp: new Date().toISOString()
-        });
+        window.isAiMessageInProgress = true;
         
         try {
-            // Get AI response
-            const response = await puter.ai.chat(message, {
-                model: activeModel,
-                stream: true
-            });
-            
-            // Remove loading indicator
-            removeLoadingMessage(loadingMessageId);
-            
-            // Create assistant message element
-            const assistantMsgEl = document.createElement('div');
-            assistantMsgEl.className = 'message assistant-message';
-            
-            // Add message header with model name and timestamp
-            const headerEl = document.createElement('div');
-            headerEl.className = 'message-header';
-            
-            const modelNameEl = document.createElement('span');
-            modelNameEl.className = 'message-sender';
-            modelNameEl.textContent = activeModel;
-            headerEl.appendChild(modelNameEl);
-            
-            const msgTime = getFormattedTime();
-            const headerTimeEl = document.createElement('span');
-            headerTimeEl.className = 'message-header-time';
-            headerTimeEl.textContent = msgTime;
-            headerEl.appendChild(headerTimeEl);
-            
-            assistantMsgEl.appendChild(headerEl);
-            
-            const contentEl = document.createElement('div');
-            contentEl.className = 'message-content';
-            assistantMsgEl.appendChild(contentEl);
-            
-            // Add to messages
-            messagesContainer.appendChild(assistantMsgEl);
-            
-            // Stream the response
-            let fullResponse = '';
-            for await (const part of response) {
-                if (part?.text) {
-                    fullResponse += part.text;
-                    // Convert newlines to <p> tags
-                    contentEl.innerHTML = formatMessageContent(fullResponse);
-                    // Scroll to bottom
-                    scrollToBottom();
-                }
+            // Show chat and hide model cards if not already shown
+            if (!chatActive) {
+                showChat();
             }
             
-            // Add assistant message to history
+            // Add user message to UI
+            addUserMessage(message);
+            
+            // Clear input
+            messageInput.value = '';
+            
+            // Add loading indicator
+            const loadingMessageId = addLoadingMessage();
+            
+            // Create messages array for history if it doesn't exist yet
+            let currentMessages = [];
+            
+            // Add user message to history
             currentMessages.push({
-                sender: 'assistant',
-                content: fullResponse,
-                model: activeModel,
-                time: msgTime,
+                sender: 'user',
+                content: message,
+                time: getFormattedTime(),
                 timestamp: new Date().toISOString()
             });
             
-            // Save to chat history
-            saveChatHistory({
-                timestamp: new Date().toISOString(),
-                firstMessage: message,
-                messages: currentMessages
-            });
+            try {
+                // Fix for grok-3-beta - ensure correct model name
+                let modelToUse = activeModel;
+                if (activeModel === 'grok-3-beta') {
+                    modelToUse = 'x-ai/grok-3-beta';
+                }
+                
+                // Check if this is a DeepSeek model
+                const isDeepseek = activeModel.includes('deepseek');
+                
+                // Create assistant message element
+                const assistantMsgEl = document.createElement('div');
+                assistantMsgEl.className = 'message assistant-message';
+                
+                // Add message header with model name and timestamp
+                const headerEl = document.createElement('div');
+                headerEl.className = 'message-header';
+                
+                const modelNameEl = document.createElement('span');
+                modelNameEl.className = 'message-sender';
+                modelNameEl.textContent = activeModel;
+                headerEl.appendChild(modelNameEl);
+                
+                const msgTime = getFormattedTime();
+                const headerTimeEl = document.createElement('span');
+                headerTimeEl.className = 'message-header-time';
+                headerTimeEl.textContent = msgTime;
+                headerEl.appendChild(headerTimeEl);
+                
+                assistantMsgEl.appendChild(headerEl);
+                
+                // For DeepSeek models, add reasoning process element
+                let reasoningElement = null;
+                if (isDeepseek) {
+                    reasoningElement = document.createElement('div');
+                    reasoningElement.className = 'reasoning-process';
+                    reasoningElement.innerHTML = '<p>Thinking...</p>';
+                    assistantMsgEl.appendChild(reasoningElement);
+                }
+                
+                // Add content element
+                const contentEl = document.createElement('div');
+                contentEl.className = 'message-content';
+                if (isDeepseek) {
+                    contentEl.innerHTML = '<p>Generating response...</p>';
+                }
+                assistantMsgEl.appendChild(contentEl);
+                
+                // Add to messages container
+                messagesContainer.appendChild(assistantMsgEl);
+                
+                // Remove loading indicator
+                removeLoadingMessage(loadingMessageId);
+                
+                let fullResponse = '';
+                let fullReasoning = '';
+                
+                // Function to show an error message in the chat
+                const showError = (error) => {
+                    console.error('Error getting AI response:', error);
+                    
+                    let errorMessage = 'Unknown error occurred';
+                    let errorDetails = '';
+                    
+                    // Check for permission denied
+                    if (error && error.error && error.error.message) {
+                        if (error.error.message.includes('Permission denied')) {
+                            errorMessage = 'Permission denied';
+                            errorDetails = 'Your account may not have access to this model or you\'ve reached usage limits. Try signing in or using a different model.';
+                        } else if (error.error.code === 'error_400_from_delegate' && error.error.delegate === 'usage-limited-chat') {
+                            errorMessage = 'Usage limit reached';
+                            errorDetails = 'You\'ve reached your usage limit for this model. Try signing in or using a different model.';
+                        } else {
+                            errorMessage = error.error.message || error.message || 'Error connecting to model';
+                            errorDetails = `Error code: ${error.error.code || 'unknown'}`;
+                        }
+                    } else if (error && error.message) {
+                        errorMessage = error.message;
+                    }
+                    
+                    // Display error message in the content element
+                    contentEl.innerHTML = `<div class="error-message">
+                        <p><strong>${errorMessage}</strong></p>
+                        ${errorDetails ? `<p>${errorDetails}</p>` : ''}
+                        <p class="error-suggestion">Try using a different model or try again later.</p>
+                    </div>`;
+                    
+                    // Hide reasoning element if it exists
+                    if (reasoningElement) {
+                        reasoningElement.style.display = 'none';
+                    }
+                };
+                
+                // Handle DeepSeek models using their specific module
+                if (isDeepseek && window.DeepSeekModels) {
+                    try {
+                        console.log("Using DeepSeek specific module for:", activeModel);
+                        
+                        // Create formatted message for DeepSeek API
+                        const formattedMessage = message;
+                        
+                        // Get the appropriate model handler
+                        const deepseekModel = window.DeepSeekModels.getModelById(activeModel);
+                        
+                        if (streamingEnabled) {
+                            // Stream response using DeepSeekModels
+                            console.log("Streaming enabled for DeepSeek");
+                            await deepseekModel.streamMessage(
+                                formattedMessage,
+                                // Content chunk handler
+                                (chunk) => {
+                                    console.log("Received content chunk:", chunk);
+                                    fullResponse += chunk;
+                                    contentEl.innerHTML = formatMessageContent(fullResponse);
+                                    scrollToBottom();
+                                },
+                                // Thinking/reasoning chunk handler
+                                (thinking) => {
+                                    console.log("Received thinking chunk:", thinking);
+                                    fullReasoning += thinking;
+                                    if (reasoningElement) {
+                                        reasoningElement.innerHTML = formatReasoningContent(fullReasoning);
+                                        // Make sure the reasoning element is visible
+                                        reasoningElement.style.display = 'block';
+                                    }
+                                    scrollToBottom();
+                                },
+                                { 
+                                    temperature: 0.7,
+                                    show_thinking: true
+                                }
+                            ).catch(error => {
+                                showError(error);
+                            });
+                        } else {
+                            // Non-streaming response
+                            console.log("Non-streaming for DeepSeek");
+                            const result = await deepseekModel.sendMessage(formattedMessage, { 
+                                show_thinking: true,
+                                temperature: 0.7 
+                            }).catch(error => {
+                                showError(error);
+                                return null;
+                            });
+                            
+                            if (result) {
+                                console.log("DeepSeek result:", result);
+                                
+                                if (result && result.message && result.message.content) {
+                                    fullResponse = result.message.content;
+                                    contentEl.innerHTML = formatMessageContent(fullResponse);
+                                } else {
+                                    contentEl.innerHTML = '<p>No response content received</p>';
+                                }
+                                
+                                if (result && result.thinking && reasoningElement) {
+                                    fullReasoning = result.thinking;
+                                    reasoningElement.innerHTML = formatReasoningContent(fullReasoning);
+                                    // Make sure the reasoning element is visible
+                                    reasoningElement.style.display = 'block';
+                                } else if (reasoningElement) {
+                                    reasoningElement.innerHTML = '<p>No reasoning process available</p>';
+                                }
+                                
+                                scrollToBottom();
+                            }
+                        }
+                        
+                        // If we have no response but had an error, show an error message
+                        if (!fullResponse && contentEl.innerHTML.includes('Generating response')) {
+                            contentEl.innerHTML = '<p>Error: No response received from DeepSeek model.</p>';
+                        }
+                        
+                        // If we have no reasoning but the element exists, show a message
+                        if (!fullReasoning && reasoningElement && reasoningElement.innerHTML.includes('Thinking')) {
+                            reasoningElement.innerHTML = '<p>No reasoning process available</p>';
+                        }
+                        
+                    } catch (error) {
+                        console.error("Error using DeepSeek module:", error);
+                        showError(error);
+                    }
+                } else {
+                    // Generic API for non-DeepSeek models
+                    const requestOptions = {
+                        model: modelToUse,
+                        stream: streamingEnabled
+                    };
+                    
+                    try {
+                        // Get AI response
+                        const response = await puter.ai.chat(message, requestOptions);
+                        
+                        if (streamingEnabled) {
+                            // Stream the response
+                            for await (const part of response) {
+                                // Handle response text chunk
+                                if (part?.text) {
+                                    fullResponse += part.text;
+                                    contentEl.innerHTML = formatMessageContent(fullResponse);
+                                }
+                                
+                                // Scroll to bottom
+                                scrollToBottom();
+                            }
+                        } else {
+                            // Handle non-streaming response
+                            if (response.message?.content) {
+                                fullResponse = response.message.content;
+                                contentEl.innerHTML = formatMessageContent(fullResponse);
+                            }
+                            
+                            scrollToBottom();
+                        }
+                    } catch (error) {
+                        showError(error);
+                    }
+                }
+                
+                // Only add to history if we got a successful response
+                if (fullResponse) {
+                    // Add assistant message to history
+                    currentMessages.push({
+                        sender: 'assistant',
+                        content: fullResponse,
+                        reasoning: isDeepseek ? fullReasoning : null,
+                        model: activeModel,
+                        time: msgTime,
+                        timestamp: new Date().toISOString()
+                    });
+                    
+                    // Save to chat history
+                    saveChatHistory({
+                        timestamp: new Date().toISOString(),
+                        firstMessage: message,
+                        messages: currentMessages
+                    });
+                }
+                
+            } catch (error) {
+                console.error('Error in message handling:', error);
+                removeLoadingMessage(loadingMessageId);
+                
+                // Add error message
+                const errorMsgEl = document.createElement('div');
+                errorMsgEl.className = 'message assistant-message error';
+                
+                let errorMessage = 'Unknown error occurred';
+                let errorDetails = '';
+                
+                // Check for common API errors
+                if (error && error.error && error.error.message) {
+                    if (error.error.message.includes('Permission denied')) {
+                        errorMessage = 'Permission denied';
+                        errorDetails = 'Your account may not have access to this model or you\'ve reached usage limits. Try signing in or using a different model.';
+                    } else if (error.error.code === 'error_400_from_delegate' && error.error.delegate === 'usage-limited-chat') {
+                        errorMessage = 'Usage limit reached';
+                        errorDetails = 'You\'ve reached your usage limit for this model. Try signing in or using a different model.';
+                    } else {
+                        errorMessage = error.error.message || error.message || 'Error connecting to model';
+                        errorDetails = `Error code: ${error.error.code || 'unknown'}`;
+                    }
+                } else if (error && error.message) {
+                    errorMessage = error.message;
+                }
+                
+                errorMsgEl.innerHTML = `<div class="message-content">
+                    <div class="error-message">
+                        <p><strong>${errorMessage}</strong></p>
+                        ${errorDetails ? `<p>${errorDetails}</p>` : ''}
+                        <p class="error-suggestion">Try using a different model or try again later.</p>
+                    </div>
+                </div>`;
+                
+                messagesContainer.appendChild(errorMsgEl);
+            }
             
-        } catch (error) {
-            console.error('Error getting AI response:', error);
-            removeLoadingMessage(loadingMessageId);
-            
-            // Add error message
-            const errorMsgEl = document.createElement('div');
-            errorMsgEl.className = 'message assistant-message error';
-            errorMsgEl.innerHTML = `<div class="message-content"><p>Sorry, I encountered an error: ${error.message}</p></div>`;
-            messagesContainer.appendChild(errorMsgEl);
+        } finally {
+            // Always clear the in-progress flag when done
+            window.isAiMessageInProgress = false;
         }
         
         // Scroll to bottom
@@ -405,8 +751,385 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+    // Enhance message content formatting with markdown support
     function formatMessageContent(text) {
-        // Convert newlines to paragraphs
+        // Ensure text is a string
+        if (!text) {
+            console.warn('formatMessageContent received empty input:', text);
+            return '<p>Error: Received empty response</p>';
+        }
+        
+        // Handle array responses (particularly from Claude models)
+        if (Array.isArray(text)) {
+            console.log('Handling array response from model:', text);
+            // Try to extract the content from the array
+            if (text.length > 0) {
+                // Extract the text content from various possible structures
+                if (text[0].text) {
+                    text = text[0].text;
+                } else if (text[0].content) {
+                    text = text[0].content;
+                } else if (text[0].message && text[0].message.content) {
+                    text = text[0].message.content;
+                } else {
+                    // Try to stringify the content if we can't find text directly
+                    try {
+                        text = JSON.stringify(text);
+                    } catch (e) {
+                        console.error('Failed to stringify array response:', e);
+                        return '<p>Error: Failed to process model response</p>';
+                    }
+                }
+            } else {
+                return '<p>Error: Received empty array response</p>';
+            }
+        }
+        
+        // Handle object responses
+        if (typeof text === 'object' && text !== null) {
+            console.log('Handling object response from model:', text);
+            // Try to extract text from various possible structures
+            if (text.text) {
+                text = text.text;
+            } else if (text.content) {
+                text = text.content;
+            } else if (text.message && text.message.content) {
+                text = text.message.content;
+            } else {
+                // Try to stringify the object if we can't find text directly
+                try {
+                    text = JSON.stringify(text);
+                } catch (e) {
+                    console.error('Failed to stringify object response:', e);
+                    return '<p>Error: Failed to process model response</p>';
+                }
+            }
+        }
+        
+        // Final check to ensure we have a string
+        if (typeof text !== 'string') {
+            console.warn('formatMessageContent still has non-string after processing:', text);
+            return '<p>Error: Received invalid response format</p>';
+        }
+        
+        // Check if Codestral is the active model
+        const isCodestral = activeModel.includes('codestral');
+        
+        // If Codestral is active, use markdown rendering
+        if (isCodestral && window.marked) {
+            try {
+                // Configure marked for syntax highlighting
+                marked.setOptions({
+                    highlight: function(code, language) {
+                        if (language && hljs.getLanguage(language)) {
+                            try {
+                                return hljs.highlight(code, { language }).value;
+                            } catch (e) {
+                                console.error('Error highlighting code:', e);
+                            }
+                        }
+                        return hljs.highlightAuto(code).value;
+                    },
+                    langPrefix: 'hljs language-',
+                    breaks: true,
+                    gfm: true
+                });
+                
+                // Render markdown
+                const renderedContent = marked.parse(text);
+                
+                // Wrap in markdown container
+                const formattedContent = `<div class="markdown-content">${renderedContent}</div>`;
+                
+                // Add preview buttons to code blocks after a short delay to ensure DOM is ready
+                setTimeout(addCodePreviewButtons, 100);
+                
+                return formattedContent;
+            } catch (e) {
+                console.error('Error rendering markdown:', e);
+                // Fall back to simple paragraph formatting
+            }
+        }
+        
+        // Default formatting (for non-Codestral models or if markdown fails)
+        return text.split('\n')
+            .filter(line => line.trim() !== '')
+            .map(line => `<p>${line}</p>`)
+            .join('');
+    }
+    
+    // Function to add preview buttons to code blocks
+    function addCodePreviewButtons() {
+        const codeBlocks = document.querySelectorAll('.markdown-content pre');
+        
+        codeBlocks.forEach((pre, index) => {
+            // Check if button already exists
+            if (pre.querySelector('.code-preview-btn')) {
+                return;
+            }
+            
+            // Create preview button
+            const previewBtn = document.createElement('button');
+            previewBtn.classList.add('code-preview-btn');
+            previewBtn.textContent = 'Preview';
+            previewBtn.dataset.codeIndex = index;
+            
+            // Add click event
+            previewBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const code = pre.querySelector('code').textContent;
+                const language = getCodeLanguage(pre.querySelector('code'));
+                
+                if (isPreviewableCode(language)) {
+                    showCodePreview(code, language);
+                } else {
+                    console.log('Cannot preview this language:', language);
+                    alert('Preview not available for this language');
+                }
+            });
+            
+            // Add button to code block
+            pre.appendChild(previewBtn);
+        });
+    }
+    
+    // Function to get the language of a code block
+    function getCodeLanguage(codeElement) {
+        if (!codeElement) return '';
+        
+        // Look for language class from highlight.js
+        const classes = codeElement.className.split(' ');
+        for (const cls of classes) {
+            if (cls.startsWith('language-')) {
+                return cls.replace('language-', '');
+            }
+        }
+        
+        return '';
+    }
+    
+    // Function to check if code is previewable
+    function isPreviewableCode(language) {
+        const previewableLanguages = ['html', 'css', 'javascript', 'js', 'jsx', 'svg'];
+        return previewableLanguages.includes(language.toLowerCase());
+    }
+    
+    // Function to show code preview
+    function showCodePreview(code, language) {
+        // Create overlay
+        const overlay = document.createElement('div');
+        overlay.classList.add('preview-overlay');
+        
+        // Create preview window
+        const previewWindow = document.createElement('div');
+        previewWindow.classList.add('preview-window');
+        
+        // Create header
+        const header = document.createElement('div');
+        header.classList.add('preview-header');
+        
+        const title = document.createElement('div');
+        title.classList.add('preview-title');
+        title.textContent = language.toUpperCase() + ' Preview';
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.classList.add('preview-close');
+        closeBtn.innerHTML = '&times;';
+        closeBtn.addEventListener('click', function() {
+            document.body.removeChild(overlay);
+        });
+        
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+        
+        // Create content area
+        const content = document.createElement('div');
+        content.classList.add('preview-content');
+        
+        // Handle different languages
+        if (language === 'html' || language === 'svg') {
+            // For HTML, use an iframe
+            const iframe = document.createElement('iframe');
+            iframe.classList.add('preview-iframe');
+            content.appendChild(iframe);
+            
+            // Add to DOM first so we can access the document
+            previewWindow.appendChild(header);
+            previewWindow.appendChild(content);
+            overlay.appendChild(previewWindow);
+            document.body.appendChild(overlay);
+            
+            // Write to iframe
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            iframeDoc.open();
+            iframeDoc.write(code);
+            iframeDoc.close();
+        } else if (language === 'css') {
+            // For CSS, create a demo HTML with the CSS applied
+            const iframe = document.createElement('iframe');
+            iframe.classList.add('preview-iframe');
+            content.appendChild(iframe);
+            
+            // Add to DOM
+            previewWindow.appendChild(header);
+            previewWindow.appendChild(content);
+            overlay.appendChild(previewWindow);
+            document.body.appendChild(overlay);
+            
+            // Create a demo HTML document with the CSS
+            const demoHTML = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <style>${code}</style>
+                </head>
+                <body>
+                    <h1>CSS Preview</h1>
+                    <div class="container">
+                        <h2>Heading 2</h2>
+                        <p>This is a paragraph with <a href="#">a link</a> and some <strong>bold text</strong>.</p>
+                        <button>Button</button>
+                        <div class="box">A div with class "box"</div>
+                        <ul>
+                            <li>List item 1</li>
+                            <li>List item 2</li>
+                            <li>List item 3</li>
+                        </ul>
+                    </div>
+                </body>
+                </html>
+            `;
+            
+            // Write to iframe
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            iframeDoc.open();
+            iframeDoc.write(demoHTML);
+            iframeDoc.close();
+        } else if (language === 'javascript' || language === 'js' || language === 'jsx') {
+            // For JS, create a sandbox with console output
+            const iframe = document.createElement('iframe');
+            iframe.classList.add('preview-iframe');
+            content.appendChild(iframe);
+            
+            // Add to DOM
+            previewWindow.appendChild(header);
+            previewWindow.appendChild(content);
+            overlay.appendChild(previewWindow);
+            document.body.appendChild(overlay);
+            
+            // Create a JS sandbox
+            const sandboxHTML = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <style>
+                        body { font-family: monospace; padding: 20px; }
+                        .console-output { 
+                            border: 1px solid #ccc; 
+                            padding: 10px; 
+                            margin-top: 20px;
+                            height: 200px;
+                            overflow: auto;
+                            background-color: #f5f5f5;
+                        }
+                        .log { color: #333; }
+                        .error { color: #d32f2f; }
+                        .warn { color: #ff8f00; }
+                        .info { color: #0288d1; }
+                    </style>
+                </head>
+                <body>
+                    <h3>JavaScript Output</h3>
+                    <div class="console-output" id="console"></div>
+                    <script>
+                        // Override console methods
+                        const consoleOutput = document.getElementById('console');
+                        const originalConsole = {
+                            log: console.log,
+                            error: console.error,
+                            warn: console.warn,
+                            info: console.info
+                        };
+                        
+                        console.log = function() {
+                            const args = Array.from(arguments);
+                            const msg = document.createElement('div');
+                            msg.className = 'log';
+                            msg.textContent = args.map(arg => 
+                                typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+                            ).join(' ');
+                            consoleOutput.appendChild(msg);
+                            originalConsole.log.apply(console, arguments);
+                        };
+                        
+                        console.error = function() {
+                            const args = Array.from(arguments);
+                            const msg = document.createElement('div');
+                            msg.className = 'error';
+                            msg.textContent = args.map(arg => 
+                                typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+                            ).join(' ');
+                            consoleOutput.appendChild(msg);
+                            originalConsole.error.apply(console, arguments);
+                        };
+                        
+                        console.warn = function() {
+                            const args = Array.from(arguments);
+                            const msg = document.createElement('div');
+                            msg.className = 'warn';
+                            msg.textContent = args.map(arg => 
+                                typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+                            ).join(' ');
+                            consoleOutput.appendChild(msg);
+                            originalConsole.warn.apply(console, arguments);
+                        };
+                        
+                        console.info = function() {
+                            const args = Array.from(arguments);
+                            const msg = document.createElement('div');
+                            msg.className = 'info';
+                            msg.textContent = args.map(arg => 
+                                typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+                            ).join(' ');
+                            consoleOutput.appendChild(msg);
+                            originalConsole.info.apply(console, arguments);
+                        };
+                        
+                        // Run the code with error handling
+                        try {
+                            // Add the user's code
+                            ${code}
+                        } catch (e) {
+                            console.error('Runtime error: ' + e.message);
+                        }
+                    </script>
+                </body>
+                </html>
+            `;
+            
+            // Write to iframe
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            iframeDoc.open();
+            iframeDoc.write(sandboxHTML);
+            iframeDoc.close();
+        } else {
+            // For other languages, show a message
+            content.innerHTML = '<p>Preview not available for this language.</p>';
+            
+            // Add to DOM
+            previewWindow.appendChild(header);
+            previewWindow.appendChild(content);
+            overlay.appendChild(previewWindow);
+            document.body.appendChild(overlay);
+        }
+    }
+    
+    // Function to format reasoning content
+    function formatReasoningContent(text) {
+        if (!text) return '';
+        
         return text.split('\n')
             .filter(line => line.trim() !== '')
             .map(line => `<p>${line}</p>`)
@@ -460,6 +1183,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Sign out handler function
     function handleSignOut() {
         puter.auth.signOut();
+        // Clear cache to force fresh check
+        authStatusCache.lastChecked = 0;
         checkAuthStatus();
         hideDropdown();
     }
@@ -502,28 +1227,66 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+    // Helper function to check if user is signed in with caching
+    async function isUserSignedIn() {
+        const now = Date.now();
+        // Use cached value if available and less than 5 minutes old
+        if (authStatusCache.isSignedIn !== null && (now - authStatusCache.lastChecked) < 300000) {
+            return authStatusCache.isSignedIn;
+        }
+        
+        // Otherwise check and update cache
+        const isSignedIn = puter.auth.isSignedIn();
+        authStatusCache.isSignedIn = isSignedIn;
+        authStatusCache.lastChecked = now;
+        return isSignedIn;
+    }
+    
     // Function to check authentication status and update UI
     async function checkAuthStatus() {
-        if (puter.auth.isSignedIn()) {
-            try {
-                const user = await puter.auth.getUser();
-                signInBtn.textContent = user.username;
-                signInBtn.classList.add('signed-in');
-                
-                // Show sign out button in header
-                if (headerSignOutBtn) {
-                    headerSignOutBtn.classList.add('visible');
+        const now = Date.now();
+        let isSignedIn = false;
+        let user = null;
+        
+        // Use cached value if available and less than 5 minutes old
+        if ((now - authStatusCache.lastChecked) < 300000) {
+            isSignedIn = authStatusCache.isSignedIn;
+            user = authStatusCache.user;
+        } else {
+            // Otherwise make a fresh check
+            isSignedIn = puter.auth.isSignedIn();
+            authStatusCache.isSignedIn = isSignedIn;
+            
+            if (isSignedIn) {
+                try {
+                    user = await puter.auth.getUser();
+                    authStatusCache.user = user;
+                } catch (error) {
+                    console.error('Error getting user info:', error);
+                    user = null;
                 }
-                
-                // Update dropdown username
-                if (usernameDisplay) {
-                    usernameDisplay.textContent = user.username;
-                }
-                
-                console.log('User info:', user);
-            } catch (error) {
-                console.error('Error getting user info:', error);
+            } else {
+                authStatusCache.user = null;
             }
+            
+            authStatusCache.lastChecked = now;
+        }
+        
+        if (isSignedIn && user) {
+            signInBtn.textContent = user.username;
+            signInBtn.classList.add('signed-in');
+            
+            // Show sign out button in header
+            if (headerSignOutBtn) {
+                headerSignOutBtn.classList.add('visible');
+            }
+            
+            // Update dropdown username
+            if (usernameDisplay) {
+                usernameDisplay.textContent = user.username;
+            }
+            
+            console.log('User info:', user);
         } else {
             signInBtn.textContent = 'Sign in';
             signInBtn.classList.remove('signed-in');

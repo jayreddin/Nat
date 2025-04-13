@@ -1,14 +1,14 @@
 /**
- * Claude 3.5 Sonnet Integration
+ * Claude 3 Haiku Integration
  * 
  * This file contains the functions and configurations for communicating
- * with Anthropic's Claude 3.5 Sonnet model through the Puter API.
+ * with Anthropic's Claude 3 Haiku model through the Puter API.
  */
 
-const Claude35Model = {
-    name: "Claude 3.5 Sonnet",
+const Claude3HaikuModel = {
+    name: "Claude 3 Haiku",
     provider: "Anthropic",
-    description: "A good general-purpose model for most applications.",
+    description: "Claude 3 Haiku is Anthropic's fastest model, optimized for high throughput applications requiring rapid responses and cost efficiency.",
     maxTokens: 200000,
     defaultParams: {
         temperature: 0.7,
@@ -48,7 +48,7 @@ const Claude35Model = {
     },
     
     /**
-     * Sends a message to the Claude 3.5 Sonnet model
+     * Sends a message to the Claude 3 Haiku model
      * @param {string|object|array} message - The user message to send to the model
      * @param {Object} options - Additional options for the request
      * @returns {Promise<object>} - The model's response
@@ -60,10 +60,10 @@ const Claude35Model = {
             const modelOptions = {
                 ...this.defaultParams,
                 ...options,
-                model: 'claude-3-5-sonnet'
+                model: 'claude-3-haiku'
             };
             
-            console.log("Sending Claude 3.5 request with options:", modelOptions);
+            console.log("Sending Claude 3 Haiku request with options:", modelOptions);
             console.log("Messages:", formattedMessages);
             
             const response = await puter.ai.chat({
@@ -71,59 +71,32 @@ const Claude35Model = {
                 ...modelOptions
             });
             
-            console.log("Claude 3.5 response:", response);
+            console.log("Claude 3 Haiku response:", response);
             
             // If we got an error response, format it properly
             if (response && response.error) {
-                throw new Error(response.error.message || "Error from Claude 3.5 API");
+                throw new Error(response.error.message || "Error from Claude 3 Haiku API");
             }
             
-            // Properly extract the text content from various response formats
-            let textContent = '';
-            
-            // Handle Claude's specific content format (array of content blocks)
-            if (response.message?.content && Array.isArray(response.message.content)) {
-                // Extract text from content blocks
-                for (const block of response.message.content) {
-                    if (block.type === 'text' && block.text) {
-                        textContent += block.text;
-                    }
-                }
-            } else if (response.message?.content?.[0]?.text) {
-                // Direct access to first text block
-                textContent = response.message.content[0].text;
-            } else if (response.content && typeof response.content === 'string') {
-                // Simple content string
-                textContent = response.content;
+            // Handle different response formats
+            if (response.message?.content?.[0]?.text) {
+                return response.message.content[0].text;
+            } else if (response.content) {
+                return response.content;
             } else if (typeof response === 'string') {
-                // Response is already a string
-                textContent = response;
+                return response;
             } else {
-                // Fallback: try to get something usable
-                console.warn("Unexpected Claude 3.5 response format:", response);
-                
-                try {
-                    // If it's JSON-like, stringify it for debugging
-                    if (typeof response === 'object' && response !== null) {
-                        textContent = "Received unexpected response format. Raw data: " + 
-                            JSON.stringify(response, null, 2);
-                    } else {
-                        textContent = String(response);
-                    }
-                } catch (e) {
-                    textContent = "Error parsing response: " + e.message;
-                }
+                console.warn("Unexpected Claude 3 Haiku response format:", response);
+                return String(response);
             }
-            
-            return textContent;
         } catch (error) {
-            console.error("Error sending message to Claude 3.5 Sonnet:", error);
+            console.error("Error sending message to Claude 3 Haiku:", error);
             throw error;
         }
     },
     
     /**
-     * Streams a response from the Claude 3.5 Sonnet model
+     * Streams a response from the Claude 3 Haiku model
      * @param {string|object|array} message - The user message to send to the model
      * @param {function} onChunk - Callback function for each chunk of the response
      * @param {Object} options - Additional options for the request
@@ -137,11 +110,11 @@ const Claude35Model = {
             const streamOptions = {
                 ...this.defaultParams,
                 ...options,
-                model: 'claude-3-5-sonnet',
+                model: 'claude-3-haiku',
                 stream: true
             };
             
-            console.log("Streaming Claude 3.5 request with options:", streamOptions);
+            console.log("Streaming Claude 3 Haiku request with options:", streamOptions);
             console.log("Messages:", formattedMessages);
             
             // Get streaming response
@@ -154,64 +127,42 @@ const Claude35Model = {
             
             // Process each chunk
             for await (const part of response) {
-                console.log("Claude 3.5 streaming part:", part);
+                console.log("Claude 3 Haiku streaming part:", part);
                 
                 // Extract text from various possible formats
                 let chunkText = '';
-                
-                // Handle Claude's content format (array of content blocks)
-                if (part.message?.content && Array.isArray(part.message.content)) {
-                    // Extract text from content blocks
-                    for (const block of part.message.content) {
-                        if (block.type === 'text' && block.text) {
-                            chunkText += block.text;
-                        }
-                    }
-                } else if (part.message?.content?.[0]?.text) {
-                    chunkText = part.message.content[0].text;
-                } else if (part.delta?.text) {
-                    // Handle delta updates in streaming
-                    chunkText = part.delta.text;
-                } else if (part.delta?.content && Array.isArray(part.delta.content)) {
-                    // Extract from delta content blocks
-                    for (const block of part.delta.content) {
-                        if (block.type === 'text' && block.text) {
-                            chunkText += block.text;
-                        }
-                    }
-                } else if (part?.text) {
+                if (part?.text) {
                     chunkText = part.text;
-                } else if (part?.content && typeof part.content === 'string') {
+                } else if (part?.message?.content?.[0]?.text) {
+                    chunkText = part.message.content[0].text;
+                } else if (part?.content) {
                     chunkText = part.content;
                 } else if (typeof part === 'string') {
                     chunkText = part;
                 }
                 
                 if (chunkText) {
-                    console.log("Extracted chunk text:", chunkText);
                     fullResponse += chunkText;
                     if (onChunk && typeof onChunk === 'function') {
                         onChunk(chunkText, fullResponse);
                     }
-                } else {
-                    console.warn("Could not extract text from streaming part:", part);
                 }
             }
             
             return fullResponse;
         } catch (error) {
-            console.error("Error streaming message from Claude 3.5 Sonnet:", error);
+            console.error("Error streaming message from Claude 3 Haiku:", error);
             throw error;
         }
     },
     
     /**
-     * Example usage of the Claude 3.5 Sonnet model
+     * Example usage of the Claude 3 Haiku model
      * @param {string} message - Message to send
      * @param {boolean} useStreaming - Whether to use streaming
      * @returns {Promise<string|void>} - The complete response if not streaming
      */
-    async example(message = "Explain quantum computing in simple terms", useStreaming = false) {
+    async example(message = "Summarize the key benefits of using AI assistants", useStreaming = false) {
         if (useStreaming) {
             // Example with streaming
             let fullResponse = '';
@@ -230,4 +181,4 @@ const Claude35Model = {
 };
 
 // Export the model
-export default Claude35Model;
+export default Claude3HaikuModel; 
