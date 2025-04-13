@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Natter AI</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <script src="https://js.puter.com/v2/"></script>
+    <div class="container">
+        <header>
+            <div class="logo-container">
+                <img src="elements/icon/generated-icon.png" alt="Natter AI" class="logo-image">
+                <h1>Natter AI</h1>
+            </div>
+            <div class="auth-container" id="auth-container">
+                <button class="sign-in" id="sign-in">Sign In</button>
+                <button class="sign-out-btn visible" id="sign-out-btn">Sign Out</button>
+            </div>
+        </header>
+
+        <!-- User Profile Dropdown -->
+        <div class="user-dropdown" style="display: none;">
+            <div class="dropdown-item user-info">
+                <i class="fa-solid fa-user"></i>
+                <span class="username">Username</span>
+            </div>
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-item environment-info">
+                <i class="fa-solid fa-globe"></i>
+                <span>Environment: <span class="environment-type">web</span></span>
+            </div>
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-item sign-out">
+                <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                <span>Sign out</span>
+            </div>
+        </div>
+
+        <!-- Subheader with dark/light mode toggle, centered active model display, and add model button -->
+        <div class="subheader">
+            <div class="button-row">
+                <button class="theme-toggle-btn" id="theme-toggle-btn">
+                    <i class="fas fa-moon"></i>
+                    <span>Dark Mode</span>
+                </button>
+                <button class="add-model-btn" id="add-model-btn">
+                    <i class="fas fa-plus"></i>
+                    <span>Add Model</span>
+                </button>
+            </div>
+            <div class="active-model-container">
+                <div class="active-model" id="active-model">
+                    <div class="active-model-content">
+                        <span class="active-model-label">Active Model:</span>
+                        <span class="active-model-name" id="active-model-name">None</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Model Selection Overlay -->
+        <div class="model-selection-overlay">
+            <div class="model-selection-container">
+                <div class="model-selection-header">
+                    <h2>Select a Model</h2>
+                    <button class="model-selection-close">&times;</button>
+                </div>
+                <div class="model-groups">
+                    <!-- OpenAI Models -->
+                    <div class="model-group">
+                        <div class="model-group-header">OpenAI</div>
+                        <div class="model-item active" data-model="gpt-4o-mini" data-provider="OpenAI">
+                            <div class="model-name">gpt-4o-mini <span class="default-label">default</span></div>
+                        </div>
+                        <div class="model-item" data-model="gpt-4o" data-provider="OpenAI">
+                            <div class="model-name">gpt-4o</div>
+                        </div>
+                        <div class="model-item" data-model="o3-mini" data-provider="OpenAI">
+                            <div class="model-name">o3-mini</div>
+                        </div>
+                        <div class="model-item" data-model="o1-mini" data-provider="OpenAI">
+                            <div class="model-name">o1-mini</div>
+                        </div>
+                    </div>
+
+                    <!-- Anthropic Models -->
+                    <div class="model-group">
+                        <div class="model-group-header">Anthropic</div>
+                        <div class="model-item" data-model="claude-3-5-sonnet" data-provider="Anthropic">
+                            <div class="model-name">claude-3-5-sonnet</div>
+                        </div>
+                        <div class="model-item" data-model="claude-3-7-sonnet" data-provider="Anthropic">
+                            <div class="model-name">claude-3-7-sonnet</div>
+                        </div>
+                    </div>
+
+                    <!-- High-Flyer (DeepSeek) Models -->
+                    <div class="model-group">
+                        <div class="model-group-header">High-Flyer (DeepSeek)</div>
+                        <div class="model-item" data-model="deepseek-chat" data-provider="High-Flyer (DeepSeek)">
+                            <div class="model-name">deepseek-chat</div>
+                        </div>
+                        <div class="model-item" data-model="deepseek-reasoner" data-provider="High-Flyer (DeepSeek)">
+                            <div class="model-name">deepseek-reasoner</div>
+                        </div>
+                    </div>
+
+                    <!-- Google Models -->
+                    <div class="model-group">
+                        <div class="model-group-header">Google</div>
+                        <div class="model-item" data-model="gemini-2.0-flash" data-provider="Google">
+                            <div class="model-name">gemini-2.0-flash</div>
+                        </div>
+                        <div class="model-item" data-model="gemini-1.5-flash" data-provider="Google">
+                            <div class="model-name">gemini-1.5-flash</div>
+                        </div>
+                    </div>
+
+                    <!-- Together.ai Models -->
+                    <div class="model-group">
+                        <div class="model-group-header">Together.ai</div>
+                        <div class="model-item" data-model="meta-llama/llama-4-maverick" data-provider="Together.ai">
+                            <div class="model-name">meta-llama/llama-4-maverick</div>
+                        </div>
+                        <div class="model-item" data-model="meta-llama/llama-4-scout" data-provider="Together.ai">
+                            <div class="model-name">meta-llama/llama-4-scout</div>
+                        </div>
+                        <div class="model-item" data-model="meta-llama/llama-3.3-70b-instruct" data-provider="Together.ai">
+                            <div class="model-name">meta-llama/llama-3.3-70b-instruct</div>
+                        </div>
+                        <div class="model-item" data-model="meta-llama/llama-3.2-3b-instruct" data-provider="Together.ai">
+                            <div class="model-name">meta-llama/llama-3.2-3b-instruct</div>
+                        </div>
+                        <div class="model-item" data-model="meta-llama/llama-3.2-1b-instruct" data-provider="Together.ai">
+                            <div class="model-name">meta-llama/llama-3.2-1b-instruct</div>
+                        </div>
+                        <div class="model-item" data-model="meta-llama/llama-guard-3-8b" data-provider="Together.ai">
+                            <div class="model-name">meta-llama/llama-guard-3-8b</div>
+                        </div>
+                        <div class="model-item" data-model="meta-llama/llama-guard-2-8b" data-provider="Together.ai">
+                            <div class="model-name">meta-llama/llama-guard-2-8b</div>
+                        </div>
+                        <div class="model-item" data-model="meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo" data-provider="Together.ai">
+                            <div class="model-name">meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo</div>
+                        </div>
+                        <div class="model-item" data-model="meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo" data-provider="Together.ai">
+                            <div class="model-name">meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo</div>
+                        </div>
+                        <div class="model-item" data-model="meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo" data-provider="Together.ai">
+                            <div class="model-name">meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo</div>
+                        </div>
+                    </div>
+
+                    <!-- Mistral AI Models -->
+                    <div class="model-group">
+                        <div class="model-group-header">Mistral AI</div>
+                        <div class="model-item" data-model="mistral-large-latest" data-provider="Mistral AI">
+                            <div class="model-name">mistral-large-latest</div>
+                        </div>
+                        <div class="model-item" data-model="pixtral-large-latest" data-provider="Mistral AI">
+                            <div class="model-name">pixtral-large-latest</div>
+                        </div>
+                        <div class="model-item" data-model="codestral-latest" data-provider="Mistral AI">
+                            <div class="model-name">codestral-latest</div>
+                        </div>
+                    </div>
+
+                    <!-- Groq Models -->
+                    <div class="model-group">
+                        <div class="model-group-header">Groq</div>
+                        <div class="model-item" data-model="google/gemma-2-27b-it" data-provider="Groq">
+                            <div class="model-name">google/gemma-2-27b-it</div>
+                        </div>
+                    </div>
+
+                    <!-- xAI Models -->
+                    <div class="model-group">
+                        <div class="model-group-header">xAI</div>
+                        <div class="model-item" data-model="grok-beta" data-provider="xAI">
+                            <div class="model-name">grok-beta</div>
+                        </div>
+                        <div class="model-item" data-model="grok-3-beta" data-provider="xAI">
+                            <div class="model-name">x-ai/grok-3-beta</div>
+                            </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Models Grid - Will be hidden when chat is active -->
+        <div class="models-grid">
+            <div class="model-card">
+                <h3>Flagship models</h3>
+                <div class="card-icons">
+                    <i class="fa-solid fa-robot"></i>
+                    <i class="fa-solid fa-arrows-up-down-left-right"></i>
+                </div>
+            </div>
+            <div class="model-card">
+                <h3>Best roleplay models</h3>
+                <div class="card-icons">
+                    <i class="fa-solid fa-user-astronaut"></i>
+                </div>
+            </div>
+            <div class="model-card">
+                <h3>Best coding models</h3>
+                <div class="card-icons">
+                    <i class="fa-solid fa-code"></i>
+                    <i class="fa-solid fa-gear"></i>
+                </div>
+            </div>
+            <div class="model-card">
+                <h3>Reasoning models</h3>
+                <div class="card-icons">
+                    <i class="fa-solid fa-brain"></i>
+                    <i class="fa-solid fa-lightbulb"></i>
+                    <i class="fa-solid fa-question"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Container - Will be shown when chat is active -->
+        <div class="chat-container" style="display: none;">
+            <div class="messages-container" id="messages">
+                <!-- Messages will be added here dynamically -->
+            </div>
+        </div>
+
+        <div class="chat-input-container">
+            <div class="chat-input-wrapper">
+                <div class="chat-input-header">
+                    <button class="header-btn new-chat-btn"><i class="fa-solid fa-plus"></i> <span>New Chat</span></button>
+                    <button class="header-btn history-btn"><i class="fa-solid fa-clock-rotate-left"></i> <span>History</span></button>
+                    <button class="header-btn image-btn"><i class="fa-solid fa-image"></i> <span>Image</span></button>
+                    <button class="header-btn ocr-btn"><i class="fa-solid fa-file-alt"></i> <span>OCR</span></button>
+                    <button class="header-btn settings-btn"><i class="fa-solid fa-gear"></i> <span>Settings</span></button>
+                </div>
+                <div class="chat-input-box">
+                    <input type="text" placeholder="Start a message..." class="message-input">
+                    <div class="input-actions">
+                        <button class="send-btn">
+                            <i class="fa-solid fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- History Popup -->
+    <div class="popup-overlay history-popup-overlay">
+        <div class="popup-container">
+            <div class="popup-header">
+                <h3>Chat History</h3>
+                <button class="popup-close">&times;</button>
+            </div>
+            <div class="popup-content">
+                <div class="history-list">
+                    <!-- History items will be added here -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- OCR Popup -->
+    <div class="popup-overlay ocr-popup-overlay">
+        <div class="popup-container">
+            <div class="popup-header">
+                <h3>Extract Text from Image</h3>
+                <button class="popup-close">&times;</button>
+            </div>
+            <div class="popup-content">
+                <div class="ocr-upload-container">
+                    <input type="file" id="ocr-image-input" accept="image/*" class="file-input">
+                    <label for="ocr-image-input" class="file-label">
+                        <i class="fa-solid fa-upload"></i> Choose Image
+                    </label>
+                </div>
+                <div class="ocr-preview-container" style="display: none;">
+                    <h4>Preview:</h4>
+                    <img id="ocr-preview" class="ocr-preview-img">
+                    <div class="ocr-options">
+                        <div class="option-group">
+                            <label for="ocr-language">Language:</label>
+                            <select id="ocr-language">
+                                <option value="auto">Auto-detect</option>
+                                <option value="en">English</option>
+                                <option value="es">Spanish</option>
+                                <option value="fr">French</option>
+                                <option value="de">German</option>
+                                <option value="zh">Chinese</option>
+                                <option value="ja">Japanese</option>
+                            </select>
+                        </div>
+                        <div class="option-group">
+                            <label for="ocr-mode">Mode:</label>
+                            <select id="ocr-mode">
+                                <option value="text">Text Only</option>
+                                <option value="document">Document</option>
+                                <option value="handwriting">Handwriting</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="process-btn ocr-process-btn">Extract Text</button>
+                </div>
+                <div class="ocr-result-container" style="display: none;">
+                    <h4>Extracted Text:</h4>
+                    <div class="ocr-result" id="ocr-result"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Image Gen Popup -->
+    <div class="popup-overlay image-popup-overlay">
+        <div class="popup-container">
+            <div class="popup-header">
+                <h3>Generate Image</h3>
+                <button class="popup-close">&times;</button>
+            </div>
+            <div class="popup-content">
+                <div class="image-gen-container">
+                    <textarea id="image-prompt" placeholder="Describe the image you want to generate..."></textarea>
+                    <div class="image-options">
+                        <div class="option-group">
+                            <label for="image-amount">Amount:</label>
+                            <select id="image-amount">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="4">4</option>
+                            </select>
+                        </div>
+                        <div class="option-group">
+                            <label for="image-size">Size:</label>
+                            <select id="image-size">
+                                <option value="512x512">512x512</option>
+                                <option value="1024x1024" selected>1024x1024</option>
+                                <option value="1024x1792">1024x1792</option>
+                            </select>
+                        </div>
+                        <div class="option-group">
+                            <label for="image-style">Style:</label>
+                            <select id="image-style">
+                                <option value="natural">Natural</option>
+                                <option value="vivid">Vivid</option>
+                                <option value="cartoon">Cartoon</option>
+                                <option value="anime">Anime</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="process-btn image-gen-btn">Generate</button>
+                </div>
+                <div class="image-result-container" style="display: none;">
+                    <h4>Generated Image:</h4>
+                    <div class="image-result" id="image-result"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Settings Popup -->
+    <div class="popup-overlay settings-popup-overlay">
+        <div class="popup-container">
+            <div class="popup-header">
+                <h3>Settings</h3>
+                <button class="popup-close">&times;</button>
+            </div>
+            <div class="popup-content">
+                <div class="settings-group">
+                    <label for="text-size-slider">Text Size</label>
+                    <input type="range" id="text-size-slider" min="12" max="20" value="14" step="1">
+                    <span id="text-size-value">14px</span>
+                </div>
+                <div class="settings-group">
+                    <label for="theme-select">Theme</label>
+                    <select id="theme-select">
+                        <option value="light">Light</option>
+                        <option value="dark">Dark</option>
+                        <option value="grey">Grey</option>
+                        <option value="sunrise">Sunrise</option>
+                        <option value="multicolor">Multicolor</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html> 
